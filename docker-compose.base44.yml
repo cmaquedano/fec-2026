@@ -1,0 +1,25 @@
+services:
+  app:
+    image: node:20-bookworm
+    working_dir: /app
+    restart: on-failure
+    env_file:
+      - /run/base44/app.env
+    environment:
+      - NODE_ENV=development
+    ports:
+      - "3000:5173" # Vite dev server (proxies /api and /uploads to the backend on :3001)
+    volumes:
+      - .:/app
+    # Deps install from the workspace lockfile, seed the admin, then run the
+    # repo's own dev command (concurrently: backend node --watch + vite).
+    command: ["sh", "-ec", "npm ci --no-audit --no-fund && npm run seed && exec npm run dev"]
+    healthcheck:
+      # Checks BOTH components: the Vite dev server (5173) and the Express API (3001).
+      test:
+        - CMD-SHELL
+        - "node -e \"fetch('http://127.0.0.1:5173/').then(r=>{if(!r.ok)process.exit(1)}).catch(()=>process.exit(1))\" && node -e \"fetch('http://127.0.0.1:3001/api/health').then(r=>{if(!r.ok)process.exit(1)}).catch(()=>process.exit(1))\" || (echo 'healthcheck failed: frontend (5173) or backend (3001)'; exit 1)"
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 180s
